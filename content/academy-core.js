@@ -189,6 +189,94 @@
       desc: "Double coins from your next battle.", effect: "lucky" }
   ];
 
+  /* ---------------- loading tips (rotate on title + transitions) ---------------- */
+  var TIPS = [
+    "Answer questions to cast spells. A correct answer always hits!",
+    "Wrong answers only fizzle your spell. They never hurt you.",
+    "Low on Magic? Press MEDITATE and answer to refill your meter.",
+    "Every hero trains a separate tier in each subject. Science whiz and History hero can both be you.",
+    "Blazing through? The Academy raises your tier to match. Struggling? Enjoy a Secret Side Quest detour.",
+    "Bosses guard the 7 Seals of Knowledge. Recover them all to stop THE UNMAKER.",
+    "Weaken a wild creature below 30% health, then press RESCUE to befriend it.",
+    "Your familiar fights beside you and evolves at level 7.",
+    "Gear up in your Backpack. Wands, hats, and robes all boost your stats.",
+    "Come back daily to open your gift box. Longer streaks earn bigger rewards!",
+    "Beast Within forms unlock at hero level 5: harder battles, DOUBLE experience.",
+    "New to a monster? Look for the New! badge on the dungeon map."
+  ];
+
+  /* ---------------- gear (backpack slots: wand, hat, garb, boots, ring) ---------------- */
+  var GEAR = [
+    { id: "scholars-wand", name: "Scholar's Wand", icon: "🪄", slot: "wand",
+      power: 3, hp: 0, magic: 20,
+      desc: "A gift from Professor Wren. It hums with quiet promise." },
+    { id: "scholars-cap", name: "Scholar's Cap", icon: "🎓", slot: "hat",
+      power: 0, hp: 8, magic: 10,
+      desc: "Awarded for choosing your familiar. Smart and stylish." },
+    { id: "scholars-robes", name: "Scholar's Robes", icon: "🥋", slot: "garb",
+      power: 1, hp: 14, magic: 0,
+      desc: "Awarded for rescuing Glimmerfin. Woven with riverlight." },
+    { id: "scholars-boots", name: "Scholar's Boots", icon: "🥾", slot: "boots",
+      power: 2, hp: 0, magic: 10,
+      desc: "Awarded for choosing your wizard name. Made for long quests." },
+    { id: "ember-ring", name: "Ember Ring", icon: "🔥", slot: "ring",
+      power: 2, hp: 0, magic: 15,
+      desc: "A lucky find from your daily gift. Warm to the touch." }
+  ];
+  var GEAR_SLOTS = ["wand", "hat", "garb", "boots", "ring"];
+  var GEAR_SLOT_NAMES = { wand: "Wand", hat: "Hat", garb: "Garb", boots: "Boots", ring: "Ring" };
+
+  /* ---------------- starter familiars (the 5 choices) ---------------- */
+  var STARTER_FAMILIARS = [
+    { id: "quill", name: "Quill the Inkfox", icon: "🦊", rarity: "Common",
+      stats: { power: 4, hearts: 12, magic: 8, speed: 6 },
+      desc: "A clever fox who writes battle plans in the margins." },
+    { id: "volt", name: "Volt the Circuit Mouse", icon: "🐭", rarity: "Common",
+      stats: { power: 5, hearts: 10, magic: 8, speed: 9 },
+      desc: "A zippy mouse who reroutes bad luck into good." },
+    { id: "tome", name: "Tome the Bookbat", icon: "🦇", rarity: "Uncommon",
+      stats: { power: 6, hearts: 12, magic: 12, speed: 5 },
+      desc: "A scholarly bat. Knows every page by heart." },
+    { id: "flask", name: "Flask the Bubble Frog", icon: "🐸", rarity: "Uncommon",
+      stats: { power: 5, hearts: 16, magic: 10, speed: 4 },
+      desc: "A bubbly frog. Its croak steadies any hero." },
+    { id: "orbit", name: "Orbit the Starpup", icon: "🐶", rarity: "Rare",
+      stats: { power: 8, hearts: 14, magic: 14, speed: 8 },
+      desc: "A pup born from a falling star. Rare and radiant." }
+  ];
+  var RARITY_COLORS = { Common: "#9fb2cc", Uncommon: "#6fd66f", Rare: "#7bc4ff" };
+
+  /* ---------------- scripted opening monsters ---------------- */
+  var TUTORIAL_MONSTER = { id: "nullbyte", name: "Nullbyte", icon: "👾",
+    hp: 40, power: 2, xp: 20, coins: [6, 10],
+    intro: "Bzzzt... null... null..." };
+  var RESCUE_MONSTER = { id: "glimmerfin", name: "Glimmerfin", icon: "🐬",
+    hp: 60, power: 3, xp: 25, coins: [8, 12], rarity: "Uncommon" };
+
+  /* ---------------- wizard name picker ---------------- */
+  var NAME_ADJECTIVES = ["Brave", "Clever", "Swift", "Mystic", "Bold", "Curious",
+    "Radiant", "Silent", "Wild", "Noble", "Quirky", "Stellar"];
+  var NAME_NOUNS = ["Falcon", "Tome", "Comet", "River", "Fox", "Sage",
+    "Spark", "Owl", "Voyager", "Cipher", "Beacon", "Raven"];
+
+  /* ---------------- the villain + guide NPCs ---------------- */
+  var VILLAIN = { name: "THE UNMAKER", icon: "🌑", title: "Shatterer of the Seals",
+    desc: "It unmakes what the Academy protects: knowledge itself." };
+  var NPCS = [
+    { id: "wren", name: "Professor Wren", icon: "🦉", role: "Academy Guide",
+      tips: [
+        "Welcome to the Academy, young scholar! I am Professor Wren.",
+        "Answer to cast. Your brain is the wand here.",
+        "Low on Magic? Meditate. A calm mind refills fastest."
+      ] },
+    { id: "registrar", name: "the Registrar", icon: "🧑‍🏫", role: "Hall Registrar",
+      tips: [
+        "New monsters wear a New! badge. Say hello... carefully.",
+        "The Electives Wing opens after two core bosses fall.",
+        "Math's Infinite Tower opens last. Pace yourself, scholar."
+      ] }
+  ];
+
   /* ---------------- assemble subjects in canonical order ----------------
      Core dungeons first, then the Electives Wing, then Math last
      (Nicholas's order: math comes after everything else). */
@@ -211,6 +299,22 @@
     worlds: [],   /* dungeons live on subjects */
     subjects: subjects,
     shop: SHOP,
+    tips: TIPS,
+    gear: GEAR,
+    gearSlots: GEAR_SLOTS,
+    gearSlotNames: GEAR_SLOT_NAMES,
+    starterFamiliars: STARTER_FAMILIARS,
+    rarityColors: RARITY_COLORS,
+    tutorialMonster: TUTORIAL_MONSTER,
+    rescueMonster: RESCUE_MONSTER,
+    nameAdjectives: NAME_ADJECTIVES,
+    nameNouns: NAME_NOUNS,
+    villain: VILLAIN,
+    npcs: NPCS,
+    /* Zone order for the world map: core dungeons unlock sequentially,
+       electives unlock after any 2 core bosses, math unlocks last. */
+    coreOrder: ["science", "social", "english", "health", "business", "technology", "math"],
+    sealCount: 7,
     helpers: { pick: pick, shuffle: shuffle, sample: sample, band: band },
     /* XP needed (cumulative) to reach each level, index = level */
     xpTable: [0, 0, 30, 80, 150, 240, 350, 480, 630, 810, 1000],
