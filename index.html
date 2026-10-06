@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Quest Academy: Answer to cast. Learn to win.</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="rq-app">
+
+  <section id="screen-title" class="rq-screen rq-active"></section>
+  <section id="screen-classes" class="rq-screen"></section>
+  <section id="screen-hub" class="rq-screen"></section>
+  <section id="screen-subjects" class="rq-screen"></section>
+  <section id="screen-map" class="rq-screen"></section>
+  <section id="screen-battle" class="rq-screen"></section>
+  <section id="screen-shop" class="rq-screen"></section>
+
+</div>
+<script src="engine/audio.js"></script>
+<script src="engine/save.js"></script>
+<script src="engine/adaptive.js"></script>
+<script src="engine/questions.js"></script>
+<script src="engine/battle.js"></script>
+<script src="engine/game.js"></script>
+<script src="content/subject-science.js"></script>
+<script src="content/subject-social.js"></script>
+<script src="content/subject-english.js"></script>
+<script src="content/subject-health.js"></script>
+<script src="content/subject-business.js"></script>
+<script src="content/subject-technology.js"></script>
+<script src="content/subject-math.js"></script>
+<script src="content/academy-core.js"></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function () { window.RQGame.init(); });
+</script>
+</body>
+</html>
