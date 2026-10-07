@@ -12,8 +12,14 @@
    and boss seals all keep working. The dungeon's world boss waits at the
    maze destination (the golden seal marker): beating it in the overworld
    counts exactly like beating it from the map (seal and all).
-   Winning a battle returns to the overworld; the beaten monster stays gone
-   for the visit. Locked dungeons stay locked. */
+
+   Encounter round-trip: the wizard's position, facing, and dungeon are
+   captured when a battle starts, and the player returns to those exact
+   coordinates in the same maze after the battle ends (win or flee).
+   A DEFEATED roaming monster is removed from the board and stays removed:
+   the defeat is persisted per dungeon in the save (RQSave.owDefeated), so
+   a refresh never resurrects it. Monsters the player fled from stay on
+   the board. Locked dungeons stay locked. */
 (function () {
   "use strict";
 
@@ -24,6 +30,18 @@
   var TOUCH_R = 30, BOSS_TOUCH_R = 42;
   var WIZ_R = 10, MON_R = 12;
   var BOSS_LEASH = 1.7 * TILE; /* the boss never strays far from its seal */
+
+  /* Deterministic RNG for monster placement: seeded from the dungeon's
+     maze seed so every monster keeps a stable identity (uid) across
+     reopens and refreshes, which the persisted defeat list relies on. */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
   function pack() { return window.ContentPacks.academy; }
   function $(id) { return document.getElementById(id); }
@@ -56,10 +74,13 @@
     _maze: null,
     _worldW: 480,
     _worldH: 360,
-    _wiz: { x: 60, y: 60 },
+    _wiz: { x: 60, y: 60, facing: "down" },
     _graceUntil: 0,
     _drag: null,
     _joy: null,
+    /* Round-trip snapshot captured when an encounter starts; open() uses
+       it to return the player to the exact position and facing. */
+    _resume: null,
     _onKeyDown: null, _onKeyUp: null,
     _onTouchStart: null, _onTouchMove: null, _onTouchEnd: null,
     _onJoyStart: null, _onJoyMove: null, _onJoyEnd: null,
@@ -94,8 +115,25 @@
       this._drag = null;
       this._joy = null;
       this._monsters = [];
-      var start = window.RQMaze.cellCenter(mz, mz.spawn.cx, mz.spawn.cy);
-      this._wiz = { x: start.x, y: start.y };
+      /* Defeats persist per dungeon in the save: reopening or refreshing
+         never resurrects a beaten roaming monster, and uids are
+         dungeon-scoped so a defeat in one dungeon never bleeds into
+         another. */
+      this._defeated = {};
+      var dlist = save.owDefeated(subjectId);
+      for (var di = 0; di < dlist.length; di++) this._defeated[dlist[di]] = true;
+      /* Encounter round-trip: return to the captured position and facing
+         when this open follows a battle. Otherwise start at the entrance. */
+      var resume = this._resume;
+      this._resume = null;
+      if (resume && typeof resume.x === "number" && typeof resume.y === "number") {
+        this._wiz = { x: clamp(resume.x, 0, this._worldW),
+                      y: clamp(resume.y, 0, this._worldH),
+                      facing: resume.facing || "down" };
+      } else {
+        var start = window.RQMaze.cellCenter(mz, mz.spawn.cx, mz.spawn.cy);
+        this._wiz = { x: start.x, y: start.y, facing: "down" };
+      }
       this._graceUntil = Date.now() + 2000;
 
       var scr = $("screen-overworld");
@@ -208,14 +246,19 @@
               !(x === mz.boss.cx && y === mz.boss.cy)) far.push({ cx: x, cy: y });
         }
       }
+      /* Seeded shuffle: the layout is identical on every open, so each
+         monster slot keeps a stable uid for the persisted defeat list. */
+      var rng = mulberry32(mz.seed ^ 0x5bd1e995);
       for (var i = far.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
+        var j = Math.floor(rng() * (i + 1));
         var t = far[i]; far[i] = far[j]; far[j] = t;
       }
       var n = Math.min(regular.length, 3 + Math.floor(mz.diff / 2));
       for (var k = 0; k < n && k < far.length; k++) {
         var c = M.cellCenter(mz, far[k].cx, far[k].cy);
-        this._addMonster(map, regular[k % regular.length], false, "m" + k, c);
+        var mdef = regular[k % regular.length];
+        /* Stable per-dungeon uid: slot index plus monster id. */
+        this._addMonster(map, mdef, false, "m" + k + ":" + mdef.id, c);
       }
       /* The boss waits at the maze destination, leashed near its seal. */
       if (boss) {
@@ -250,6 +293,11 @@
       if (this._joy) { dx += this._joy.x; dy += this._joy.y; }
       var len = Math.sqrt(dx * dx + dy * dy);
       if (len > 1) { dx /= len; dy /= len; }
+      /* Track facing from the dominant movement axis for the round-trip. */
+      if (dx !== 0 || dy !== 0) {
+        if (Math.abs(dx) >= Math.abs(dy)) this._wiz.facing = dx > 0 ? "right" : "left";
+        else this._wiz.facing = dy > 0 ? "down" : "up";
+      }
       this._slide(this._wiz, dx * WIZ_SPEED * dt, dy * WIZ_SPEED * dt, WIZ_R);
 
       var mz = this._maze, M = window.RQMaze;
@@ -340,14 +388,22 @@
       }
     },
 
-    /* Walking into a monster launches the normal battle flow. Winning
-       returns here; the beaten monster stays gone for this visit. */
+    /* Walking into a monster launches the normal battle flow. The
+       round-trip state (position, facing, dungeon) is captured BEFORE the
+       battle so the player returns to the exact spot afterwards.
+       A victory removes the monster permanently: the defeat is persisted
+       per dungeon in the save, so refreshes never resurrect it. A fled or
+       lost battle leaves the monster on the board. */
     _touchMonster: function (m) {
       var self = this;
       var save = window.RQSave;
       var heroId = save.data.activeHero;
       var sub = this._sub;
+      var subjectId = this._subjectId;
       var uid = m.uid, wasBoss = m.boss;
+      this._resume = { subjectId: subjectId,
+                       x: this._wiz.x, y: this._wiz.y,
+                       facing: this._wiz.facing || "down" };
       this.stop();
       var node = null;
       if (wasBoss) {
@@ -358,8 +414,8 @@
       if (wasBoss && window.RQAudio) window.RQAudio.SFX.boss();
       else if (window.RQAudio) window.RQAudio.SFX.click();
       window.RQGame.launchBattle(node, m.def, heroId, sub, function (res) {
-        if (res && res.victory) self._defeated[uid] = true;
-        self.open(self._subjectId);
+        if (res && res.victory) save.recordOwDefeated(subjectId, uid);
+        self.open(subjectId);
       });
     },
 
