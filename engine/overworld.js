@@ -1,22 +1,29 @@
 /* Quest Academy engine: overworld exploration.
-   A walkable 2D map for the current dungeon. The wizard strolls with the
-   arrow keys / WASD, touch-drag on the map, or the on-screen joystick.
-   Wild monsters roam with simple random-walk AI; walking into one launches
-   the EXISTING battle system through RQGame.launchBattle, so adaptive
-   questions, rescue, XP, coins, chests, and boss seals all keep working.
-   The dungeon's world boss roams as a special boss monster: beating it in
-   the overworld counts exactly like beating it from the map (seal and all).
+   Each dungeon is a tile MAZE (see engine/maze.js): walls, corridors, and
+   dead ends on a tile grid, with a difficulty ramp across the dungeon
+   order. The wizard strolls with the arrow keys / WASD, touch-drag on the
+   map, or the on-screen joystick; walls block movement with smooth
+   axis-separated sliding. The maze is deterministic per dungeon, so
+   reopening a dungeon rebuilds the identical maze.
+
+   Wild monsters roam the corridors with wall-bouncing wander AI; walking
+   into one launches the EXISTING battle system through
+   RQGame.launchBattle, so adaptive questions, rescue, XP, coins, chests,
+   and boss seals all keep working. The dungeon's world boss waits at the
+   maze destination (the golden seal marker): beating it in the overworld
+   counts exactly like beating it from the map (seal and all).
    Winning a battle returns to the overworld; the beaten monster stays gone
    for the visit. Locked dungeons stay locked. */
 (function () {
   "use strict";
 
-  var WORLD_W = 480, WORLD_H = 360;
+  var TILE = 40;   /* must match RQMaze.TILE */
   var WIZ_SPEED = 150;   /* world units per second */
   var MON_SPEED = 42;
   var BOSS_SPEED = 26;
   var TOUCH_R = 30, BOSS_TOUCH_R = 42;
-  var MAX_MONSTERS = 5;
+  var WIZ_R = 10, MON_R = 12;
+  var BOSS_LEASH = 1.7 * TILE; /* the boss never strays far from its seal */
 
   function pack() { return window.ContentPacks.academy; }
   function $(id) { return document.getElementById(id); }
@@ -46,7 +53,10 @@
     _defeated: {},
     _subjectId: null,
     _sub: null,
-    _wiz: { x: WORLD_W / 2, y: WORLD_H - 60 },
+    _maze: null,
+    _worldW: 480,
+    _worldH: 360,
+    _wiz: { x: 60, y: 60 },
     _graceUntil: 0,
     _drag: null,
     _joy: null,
@@ -56,8 +66,12 @@
 
     /* Test hook: read-only view of live state. */
     state: function () {
+      var mz = this._maze;
       return { wiz: this._wiz, monsters: this._monsters,
-               subjectId: this._subjectId, graceMsLeft: this._graceUntil - Date.now() };
+               subjectId: this._subjectId, graceMsLeft: this._graceUntil - Date.now(),
+               maze: mz ? { tilesW: mz.tilesW, tilesH: mz.tilesH,
+                             spawnCell: mz.spawn, bossCell: mz.boss,
+                             optimalLen: mz.optimalLen, diff: mz.diff } : null };
     },
 
     /* Open the overworld for a dungeon. Returns false when locked. */
@@ -72,11 +86,16 @@
       this.stop();
       this._subjectId = subjectId;
       this._sub = sub;
+      var mz = window.RQMaze.generate(subjectId);
+      this._maze = mz;
+      this._worldW = mz.worldW;
+      this._worldH = mz.worldH;
       this._keys = {};
       this._drag = null;
       this._joy = null;
       this._monsters = [];
-      this._wiz = { x: WORLD_W / 2, y: WORLD_H - 60 };
+      var start = window.RQMaze.cellCenter(mz, mz.spawn.cx, mz.spawn.cy);
+      this._wiz = { x: start.x, y: start.y };
       this._graceUntil = Date.now() + 2000;
 
       var scr = $("screen-overworld");
@@ -87,19 +106,26 @@
         '<div class="rq-ow-top">' +
           '<button class="rq-ghostbtn" id="ow-exit">← Map</button>' +
           '<div class="rq-ow-title">' + sub.dungeon.icon + " " + sub.dungeon.name + "</div>" +
-          '<div class="rq-ow-hint">Walk into a monster to battle! The 👑 boss roams here too.</div>' +
+          '<div class="rq-ow-hint">Find the golden seal and beat the 👑 boss waiting there. ' +
+          "Walk into a monster to battle!</div>" +
         "</div>" +
         '<div class="rq-ow-map" id="ow-map"></div>' +
         '<div class="rq-joy" id="ow-joy"><div class="rq-joyknob" id="ow-knob"></div></div>';
       scr.appendChild(wrap);
 
       var map = $("ow-map");
+      var cv = document.createElement("canvas");
+      cv.className = "rq-ow-maze";
+      cv.id = "ow-maze";
+      map.appendChild(cv);
+      this._paintMaze(cv, mz);
+
       var wizEl = el("div", "rq-ow-wiz", def.icon);
       wizEl.id = "ow-wiz";
       wizEl.title = def.name;
       map.appendChild(wizEl);
 
-      this._spawnMonsters(map, sub);
+      this._spawnMonsters(map, sub, mz);
       this._paint();
 
       var self = this;
@@ -146,27 +172,66 @@
       this._joy = null;
     },
 
-    _spawnMonsters: function (map, sub) {
-      var regular = sub.monsters.filter(function (m) { return !m.boss; });
-      var boss = sub.monsters.filter(function (m) { return m.boss; })[0];
-      var n = Math.min(MAX_MONSTERS, regular.length);
-      for (var i = 0; i < n; i++) {
-        this._addMonster(map, regular[i % regular.length], false, "m" + i);
+    /* True when the circle at (x, y) with radius r touches a wall tile. */
+    _hitsWall: function (x, y, r) {
+      var mz = this._maze, M = window.RQMaze;
+      var pts = [[x - r, y - r], [x + r, y - r], [x - r, y + r], [x + r, y + r]];
+      for (var i = 0; i < pts.length; i++) {
+        var t = M.tileAt(mz, pts[i][0], pts[i][1]);
+        if (M.isWallTile(mz, t.tx, t.ty)) return true;
       }
-      if (boss) this._addMonster(map, boss, true, "boss");
+      return false;
     },
 
-    _addMonster: function (map, mdef, isBoss, uid) {
+    /* Move an entity, sliding along walls: try full move, then x-only,
+       then y-only. Mutates ent in place. */
+    _slide: function (ent, dx, dy, r) {
+      if (!this._hitsWall(ent.x + dx, ent.y + dy, r)) {
+        ent.x += dx; ent.y += dy; return;
+      }
+      if (!this._hitsWall(ent.x + dx, ent.y, r)) { ent.x += dx; return; }
+      if (!this._hitsWall(ent.x, ent.y + dy, r)) { ent.y += dy; }
+    },
+
+    _spawnMonsters: function (map, sub, mz) {
+      var regular = sub.monsters.filter(function (m) { return !m.boss; });
+      var boss = sub.monsters.filter(function (m) { return m.boss; })[0];
+      var M = window.RQMaze;
+      /* Scatter regular monsters on cells a few steps from the entrance,
+         never on the boss cell. */
+      var distMap = M.cellDist(mz.walls, mz.cells, mz.spawn.cx, mz.spawn.cy);
+      var far = [];
+      for (var x = 0; x < mz.cells; x++) {
+        for (var y = 0; y < mz.cells; y++) {
+          var d = distMap[x + "," + y];
+          if (d !== undefined && d >= 3 &&
+              !(x === mz.boss.cx && y === mz.boss.cy)) far.push({ cx: x, cy: y });
+        }
+      }
+      for (var i = far.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = far[i]; far[i] = far[j]; far[j] = t;
+      }
+      var n = Math.min(regular.length, 3 + Math.floor(mz.diff / 2));
+      for (var k = 0; k < n && k < far.length; k++) {
+        var c = M.cellCenter(mz, far[k].cx, far[k].cy);
+        this._addMonster(map, regular[k % regular.length], false, "m" + k, c);
+      }
+      /* The boss waits at the maze destination, leashed near its seal. */
+      if (boss) {
+        var bc = M.cellCenter(mz, mz.boss.cx, mz.boss.cy);
+        this._addMonster(map, boss, true, "boss", bc);
+      }
+    },
+
+    _addMonster: function (map, mdef, isBoss, uid, pos) {
       if (this._defeated[uid]) return;
       var m = {
         uid: uid, def: mdef, boss: isBoss,
-        x: 40 + Math.random() * (WORLD_W - 80),
-        y: 40 + Math.random() * (WORLD_H - 140),
+        x: pos.x, y: pos.y,
         ang: Math.random() * Math.PI * 2,
-        turnIn: Math.random(),
         el: null
       };
-      if (dist(m.x, m.y, this._wiz.x, this._wiz.y) < 90) m.y = 56;
       var label = isBoss ? '<div class="rq-ow-bossname">👑 ' + mdef.name + "</div>" : "";
       m.el = el("div", "rq-ow-mon" + (isBoss ? " rq-ow-boss" : ""), label + mdef.icon);
       m.el.title = mdef.name;
@@ -185,26 +250,25 @@
       if (this._joy) { dx += this._joy.x; dy += this._joy.y; }
       var len = Math.sqrt(dx * dx + dy * dy);
       if (len > 1) { dx /= len; dy /= len; }
-      this._wiz.x = clamp(this._wiz.x + dx * WIZ_SPEED * dt, 16, WORLD_W - 16);
-      this._wiz.y = clamp(this._wiz.y + dy * WIZ_SPEED * dt, 16, WORLD_H - 16);
+      this._slide(this._wiz, dx * WIZ_SPEED * dt, dy * WIZ_SPEED * dt, WIZ_R);
 
+      var mz = this._maze, M = window.RQMaze;
+      var home = M.cellCenter(mz, mz.boss.cx, mz.boss.cy);
       for (i = 0; i < this._monsters.length; i++) {
         m = this._monsters[i];
-        m.turnIn -= dt;
-        if (m.turnIn <= 0) {
-          m.turnIn = 0.6 + Math.random() * 1.4;
-          m.ang = Math.random() * Math.PI * 2;
-        }
         var sp = m.boss ? BOSS_SPEED : MON_SPEED;
-        m.x += Math.cos(m.ang) * sp * dt;
-        m.y += Math.sin(m.ang) * sp * dt;
-        if (m.x < 16 || m.x > WORLD_W - 16) {
-          m.ang = Math.PI - m.ang;
-          m.x = clamp(m.x, 16, WORLD_W - 16);
+        var nx = m.x + Math.cos(m.ang) * sp * dt;
+        var ny = m.y + Math.sin(m.ang) * sp * dt;
+        if (this._hitsWall(nx, ny, MON_R)) {
+          /* Bounce off the wall and wander on. */
+          m.ang += (Math.random() < 0.5 ? 1 : -1) *
+                   (Math.PI / 2 + Math.random() * Math.PI / 2);
+        } else {
+          m.x = nx; m.y = ny;
         }
-        if (m.y < 16 || m.y > WORLD_H - 16) {
-          m.ang = -m.ang;
-          m.y = clamp(m.y, 16, WORLD_H - 16);
+        if (m.boss && dist(m.x, m.y, home.x, home.y) > BOSS_LEASH) {
+          /* Steer the boss back toward its seal. */
+          m.ang = Math.atan2(home.y - m.y, home.x - m.x);
         }
       }
       this._paint();
@@ -220,17 +284,58 @@
       }
     },
 
+    /* Draw the maze: floor, walls, entrance marker, golden boss seal. */
+    _paintMaze: function (cv, mz) {
+      var map = $("ow-map");
+      var cw = (map && map.clientWidth) || 720;
+      var ch = (map && map.clientHeight) || 540;
+      cv.width = cw; cv.height = ch;
+      var ctx = null;
+      try { ctx = cv.getContext("2d"); } catch (e) { ctx = null; }
+      if (!ctx) return;
+      var sx = cw / mz.worldW, sy = ch / mz.worldH;
+      function R(tx, ty, tw, th) {
+        ctx.fillRect(tx * TILE * sx, ty * TILE * sy, tw * TILE * sx, th * TILE * sy);
+      }
+      ctx.fillStyle = "#221a44";
+      ctx.fillRect(0, 0, cw, ch);
+      /* Entrance marker: soft green on the spawn cell tiles. */
+      ctx.fillStyle = "rgba(111,214,111,0.30)";
+      R(2 * mz.spawn.cx, 2 * mz.spawn.cy, 3, 3);
+      /* Boss destination: golden seal glow on the boss cell tiles. */
+      ctx.fillStyle = "rgba(255,215,94,0.35)";
+      R(2 * mz.boss.cx, 2 * mz.boss.cy, 3, 3);
+      /* Walls. */
+      var ty, tx;
+      for (ty = 0; ty < mz.tilesH; ty++) {
+        for (tx = 0; tx < mz.tilesW; tx++) {
+          if (!mz.grid[ty][tx]) continue;
+          ctx.fillStyle = "#5b4486";
+          R(tx, ty, 1, 1);
+          ctx.fillStyle = "rgba(255,255,255,0.10)";
+          ctx.fillRect(tx * TILE * sx, ty * TILE * sy, TILE * sx, 3);
+        }
+      }
+      /* Seal ring around the boss destination. */
+      var bc = window.RQMaze.cellCenter(mz, mz.boss.cx, mz.boss.cy);
+      ctx.strokeStyle = "rgba(255,215,94,0.9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(bc.x * sx, bc.y * sy, TILE * 0.9 * (sx + sy) / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    },
+
     _paint: function () {
       var wizEl = $("ow-wiz");
       if (wizEl) {
-        wizEl.style.left = (this._wiz.x / WORLD_W * 100) + "%";
-        wizEl.style.top = (this._wiz.y / WORLD_H * 100) + "%";
+        wizEl.style.left = (this._wiz.x / this._worldW * 100) + "%";
+        wizEl.style.top = (this._wiz.y / this._worldH * 100) + "%";
       }
       for (var i = 0; i < this._monsters.length; i++) {
         var m = this._monsters[i];
         if (m.el) {
-          m.el.style.left = (m.x / WORLD_W * 100) + "%";
-          m.el.style.top = (m.y / WORLD_H * 100) + "%";
+          m.el.style.left = (m.x / this._worldW * 100) + "%";
+          m.el.style.top = (m.y / this._worldH * 100) + "%";
         }
       }
     },
