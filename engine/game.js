@@ -320,6 +320,7 @@
           '<button class="rq-bigbtn" id="h-adv">🗺️ Adventure</button>' +
           '<button class="rq-bigbtn" id="h-subj">' + sub.icon + " " + sub.name + "</button>" +
         "</div><div class=\"rq-btnrow\">" +
+          '<button class="rq-bigbtn" id="h-explore">🧭 Explore</button>' +
           '<button class="rq-bigbtn" id="h-switch">🔄 Switch Hero</button>' +
         "</div>";
       showScreen("screen-hub");
@@ -336,6 +337,16 @@
       $("h-adv").addEventListener("click", function () { A.SFX.click(); Game.showMap(); });
       $("h-subj").addEventListener("click", function () { A.SFX.click(); Game.showSubjects(); });
       $("h-switch").addEventListener("click", function () { A.SFX.click(); Game.showClasses(); });
+      $("h-explore").addEventListener("click", function () {
+        var sid = S.data.activeSubject;
+        if (!S.zoneUnlocked(sid)) {
+          A.SFX.wrong();
+          toast("🔒 Locked! " + S.nextObjective());
+          return;
+        }
+        A.SFX.click();
+        window.RQOverworld.open(sid);
+      });
     },
 
     /* ---------- subject (dungeon) select: the world map with locks ---------- */
@@ -408,6 +419,8 @@
         '<div class="rq-hubtop"><button class="rq-ghostbtn" id="m-back">← Map</button></div>' +
         "<h2>" + sub.dungeon.icon + " " + sub.dungeon.name + "</h2>" +
         '<p class="rq-sub">' + sub.dungeon.desc + "</p>" +
+        '<div class="rq-btnrow"><button class="rq-bigbtn" id="m-explore">🧭 Explore the ' +
+        sub.dungeon.name + "</button></div>" +
         '<div class="rq-nodepath">';
       var prog = S.zoneProgress(sub.id);
       html += '<div class="rq-zonepct">' + prog.pct + "% explored (" + prog.beaten + "/" + prog.total + " nodes)</div>";
@@ -433,6 +446,10 @@
       this.bindHUD();
       $("m-back").addEventListener("click", function () {
         window.RQAudio.SFX.click(); Game.showSubjects();
+      });
+      $("m-explore").addEventListener("click", function () {
+        window.RQAudio.SFX.click();
+        window.RQOverworld.open(sub.id);
       });
       var self = this;
       Array.prototype.forEach.call(s.querySelectorAll("[data-node]"), function (btn) {
@@ -468,7 +485,9 @@
       this.launchBattle(node, mon, heroId, sub);
     },
 
-    launchBattle: function (node, mon, heroId, sub) {
+    /* onDone: optional continuation receiving the battle result
+       (the overworld passes one to return to the map after a win). */
+    launchBattle: function (node, mon, heroId, sub, onDone) {
       var self = this;
       showScreen("screen-battle");
       window.RQBattles.start({
@@ -476,16 +495,17 @@
         nodeId: node ? node.id : null,
         allowRescue: !mon.boss,
         rescueMonster: pack().rescueMonster,
-        onDone: function (res) { self.afterBattle(res, mon); }
+        onDone: function (res) { self.afterBattle(res, mon, onDone); }
       });
     },
 
-    /* after(): optional continuation for scripted flows (rescue tutorial). */
+    /* after(): optional continuation for scripted flows (rescue tutorial)
+       and the overworld. Receives the battle result. */
     afterBattle: function (res, mon, after) {
       var S = window.RQSave, A = window.RQAudio;
       var id = S.data.activeHero, def = S.heroDef(id);
       refreshCoins();
-      function finish() { if (after) after(); else Game.showHub(); }
+      function finish() { if (after) after(res); else Game.showHub(); }
       if (!res.victory) {
         var ov = modal("<h2>Safe retreat!</h2><p>You kept " + res.xp + " XP. " +
           "Visit the shop for potions, then try again. Heroes never give up!</p>" +
