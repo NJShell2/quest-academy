@@ -1,12 +1,16 @@
 /* Quest Academy overnight-fix test harness.
-   Loads engine + content files in index.html order inside jsdom and asserts
-   the six work items:
+   Loads engine + content files in index.html order inside jsdom and asserts:
      (a) all 5 familiars render with clickable buttons (+ modal scroll CSS)
      (b) every overlay-producing function has a dismiss path
      (c) familiar assignment advances the flow with no exception
      (d) TTS voice picker prefers the right voice and falls back
      (e) no em/en dashes in user-facing strings of changed files
      (f) overworld initializes, moves the wizard, triggers battle on contact
+     (g) maze dungeons: BFS solvability + difficulty ramp
+     (h) full-screen stage intro: scripted beats, actors, skip flag, flow
+     (i) familiars screen: every button wired, outcomes correct
+     (j) maze continuity: encounter round-trip, persistent monster defeats,
+         fled monsters stay, boss/seal progression intact
    Run: node tests/test.js
 */
 "use strict";
@@ -71,7 +75,7 @@ function load(f) {
   dom.window.eval(fs.readFileSync(path.join(ROOT, f), "utf8"));
 }
 ["engine/audio.js", "engine/save.js", "engine/adaptive.js", "engine/questions.js",
- "engine/battle.js", "engine/onboarding.js", "engine/game.js", "engine/maze.js", "engine/overworld.js",
+ "engine/battle.js", "engine/onboarding.js", "engine/stage.js", "engine/game.js", "engine/maze.js", "engine/overworld.js",
  "content/subject-science.js", "content/subject-social.js", "content/subject-english.js",
  "content/subject-health.js", "content/subject-business.js", "content/subject-technology.js",
  "content/subject-psychology.js", "content/subject-sociology.js", "content/subject-law.js",
@@ -363,7 +367,8 @@ var realAsk = W.RQQuestions.ask;
   /* ================= (e) no em/en dashes in changed files ================= */
   console.log("- (e) dash audit");
   ["css/style.css", "engine/audio.js", "engine/questions.js", "engine/onboarding.js",
-   "engine/battle.js", "engine/game.js", "engine/maze.js", "engine/overworld.js", "index.html"
+   "engine/battle.js", "engine/game.js", "engine/maze.js", "engine/overworld.js",
+   "engine/stage.js", "index.html"
   ].forEach(function (f) {
     var txt = fs.readFileSync(path.join(ROOT, f), "utf8");
     ok("e: no em/en dashes in " + f,
@@ -491,6 +496,266 @@ var realAsk = W.RQQuestions.ask;
       m.x >= 0 && m.y >= 0 && m.x <= smz.worldW && m.y <= smz.worldH;
   });
   ok("g16: every monster stands on a floor tile inside the maze", placedOk);
+  OW.stop();
+
+  /* ================= (h) full-screen stage intro ================= */
+  console.log("- (h) stage intro");
+  var ST = W.RQStage;
+  ok("h1: RQStage defined with script/machine/play", !!ST && !!ST.script &&
+     !!ST.createMachine && !!ST.play);
+  var script = ST.script();
+  ok("h2: three scenes", script.length === 3);
+  ok("h3: QA's own scenes (Grand Hall / Unmaker / Quest)",
+    script[0].title === "Evening in the Grand Hall" &&
+    script[1].title === "The Unmaker Strikes" &&
+    script[2].title === "The Quest");
+  var allBeats = [];
+  script.forEach(function (sc) { allBeats = allBeats.concat(sc.beats); });
+  ok("h4: 15 scripted beats", allBeats.length === 15);
+  var fxs = allBeats.map(function (b) { return b.fx || ""; });
+  ok("h5: curtains open to set the scene", fxs.indexOf("curtains-open") !== -1);
+  var unmakerLines = allBeats.filter(function (b) { return b.speaker === "THE UNMAKER"; });
+  ok("h6: villain confrontation (THE UNMAKER speaks)", unmakerLines.length >= 3);
+  ok("h7: seals shatter then scatter", fxs.indexOf("shatter") !== -1 &&
+     fxs.indexOf("scatter") !== -1 && fxs.indexOf("shatter") < fxs.indexOf("scatter"));
+  ok("h8: quest call beat present", fxs.indexOf("quest") !== -1);
+  var wrenLines = allBeats.filter(function (b) { return b.speaker === "Professor Wren"; });
+  ok("h9: Professor Wren guides the play", wrenLines.length >= 5);
+  var dashy = allBeats.some(function (b) {
+    return /—|–/.test(b.line || "") || /—|–/.test(b.nar || "");
+  });
+  ok("h10: no em/en dashes in stage dialogue", !dashy);
+
+  var m1 = ST.createMachine();
+  ok("h11: machine starts at scene 0 beat 0", m1.current().scene === 0 && m1.current().beat === 0);
+  var steps = 0;
+  while (m1.current() !== null && steps < 100) { m1.next(); steps++; }
+  ok("h12: machine walks every beat to done", steps === ST.totalBeats() && m1.current() === null);
+  var m2 = ST.createMachine();
+  m2.skip();
+  ok("h13: skip() marks the machine done", m2.current() === null);
+
+  /* Full play-through, first viewing: no Skip button. */
+  W.RQSave.reset();
+  W.RQSave.data.onboardingDone = false;
+  ok("h14: skip flag starts unset", W.RQSave.data.stageIntroSeen === false);
+  var stageDone = false;
+  ST.play(function () { stageDone = true; });
+  var root = byId("rq-qffull");
+  ok("h15: full-viewport stage renders", !!root);
+  ok("h16: curtains + valance + spotlight + hall backdrop render",
+    !!root.querySelector(".rq-qf-curtain-l") &&
+    !!root.querySelector(".rq-qf-curtain-r") &&
+    !!root.querySelector(".rq-qf-valance") &&
+    !!root.querySelector(".rq-qf-spotlight") &&
+    !!root.querySelector(".rq-qf-hall"));
+  ok("h17: backdrop shows the arc of 7 seals",
+    root.querySelectorAll(".rq-qf-seal").length === 7);
+  ok("h18: Wren and THE UNMAKER are on stage",
+    !!root.querySelector(".rq-qf-wren") && !!root.querySelector(".rq-qf-unmaker"));
+  ok("h19: no Skip button on first viewing", !byId("rq-qf-skip"));
+  var nextB = root.querySelector(".rq-qf-next");
+  ok("h20: Next advances beats", !!nextB && hasClickListener(nextB));
+  /* Wren starts offstage-left, then walks on. */
+  ok("h21: Wren starts offstage", root.querySelector(".rq-qf-wren").classList.contains("rq-qf-off-l"));
+  nextB.click(); nextB.click();
+  ok("h22: actors move AND talk (Wren walks to center with dialogue)",
+    root.querySelector(".rq-qf-wren").classList.contains("rq-qf-center") &&
+    root.querySelector(".rq-qf-speaker").textContent.indexOf("Professor Wren") !== -1 &&
+    root.querySelector(".rq-qf-line").textContent.length > 0);
+  /* Drive the rest of the beats to the finale. */
+  for (var hb = 0; hb < 20 && !stageDone; hb++) {
+    var nb = root.querySelector(".rq-qf-next");
+    if (!nb) break;
+    nb.click();
+  }
+  await wait(900);
+  ok("h23: play-through sets the skip flag", W.RQSave.data.stageIntroSeen === true);
+  ok("h24: play-through marks the guide met", W.RQSave.data.guideMet === true);
+  ok("h25: play-through reveals the main quest",
+    !!(W.RQSave.data.quests.main && W.RQSave.data.quests.main.revealed));
+  ok("h26: onDone fires and the stage is struck",
+    stageDone === true && !byId("rq-qffull"));
+
+  /* Replay: visible Skip button, skipping finishes immediately. */
+  var skipDone = false;
+  ST.play(function () { skipDone = true; });
+  var skipBtn = byId("rq-qf-skip");
+  ok("h27: replay shows a visible Skip button", !!skipBtn && hasClickListener(skipBtn));
+  skipBtn.click();
+  await wait(900);
+  ok("h28: skipping finishes the intro", skipDone === true && !byId("rq-qffull"));
+
+  /* Stage flows into onboarding: grade select follows the play. */
+  W.RQSave.reset();
+  W.RQSave.data.onboardingDone = false;
+  var flowDone = false;
+  ST.play(function () {
+    W.RQOnboard.start();
+    flowDone = true;
+  });
+  var fr = byId("rq-qffull");
+  var fnb = fr.querySelector(".rq-qf-next");
+  for (var fb = 0; fb < 20 && !flowDone; fb++) { fnb.click(); }
+  await wait(900);
+  ok("h29: stage flows into grade selection",
+    flowDone === true && !!document.querySelector("[data-grade]"));
+  clearOverlays();
+
+  /* ================= (i) familiars screen: every button wired ================= */
+  console.log("- (i) familiars screen buttons");
+  W.RQSave.reset();
+  W.RQSave.data.onboardingDone = true;
+  /* Fully caught-up save so the hub never diverts into the catch-up flow. */
+  W.RQSave.data.villainSceneSeen = true;
+  W.RQSave.data.wizardName = "Brave Falcon";
+  W.RQSave.hero("knight").familiar = { id: "quill", stage: 2 };
+  W.RQSave.addToPetbook({ id: "glimmerfin", name: "Glimmerfin", icon: "🐟",
+    rarity: "Common", color: "#9fb2cc",
+    stats: { power: 4, hearts: 12, magic: 10, speed: 6 }, rescued: true });
+  W.RQGame.showFamiliars();
+  ok("i1: familiars screen renders", byId("screen-familiars").classList.contains("rq-active"));
+  var famScreen = byId("screen-familiars");
+  var setBtns = famScreen.querySelectorAll("[data-active]");
+  ok("i2: Set Active buttons render for non-active pets", setBtns.length >= 1);
+  var setWired = Array.prototype.every.call(setBtns, function (b) {
+    return !b.disabled && hasClickListener(b);
+  });
+  ok("i3: every Set Active button is enabled with a click handler", setWired);
+  var toolBtns = famScreen.querySelectorAll("[data-tool]");
+  ok("i4: six toolbar buttons render", toolBtns.length === 6);
+  var toolsWired = Array.prototype.every.call(toolBtns, function (b) {
+    return hasClickListener(b);
+  });
+  ok("i5: every toolbar button has a click handler", toolsWired);
+  ok("i6: Back button is wired", hasClickListener(byId("f-back")));
+  ok("i7: gift box is wired", hasClickListener(byId("hud-gift")));
+
+  /* Set Active produces the expected outcome: the hero's familiar changes. */
+  var target = famScreen.querySelector('[data-active="glimmerfin"]');
+  ok("i8: rescued familiar has a Set Active button", !!target);
+  target.click();
+  ok("i9: clicking Set Active changes the hero's familiar",
+    W.RQSave.hero("knight").familiar.id === "glimmerfin");
+  ok("i10: screen re-renders without a refresh",
+    byId("screen-familiars").classList.contains("rq-active"));
+  ok("i11: rescued stamp survives the re-render",
+    byId("screen-familiars").textContent.indexOf("Rescued") !== -1);
+
+  /* Toolbar navigation works from the familiars screen, no refresh. */
+  function clickTool(name) {
+    W.RQGame.showFamiliars();
+    var b = byId("screen-familiars").querySelector('[data-tool="' + name + '"]');
+    b.click();
+  }
+  clickTool("backpack");
+  ok("i12: Backpack toolbar button navigates", byId("screen-backpack").classList.contains("rq-active"));
+  clickTool("shop");
+  ok("i13: Shop toolbar button navigates", byId("screen-shop").classList.contains("rq-active"));
+  clickTool("map");
+  ok("i14: Map toolbar button navigates", byId("screen-subjects").classList.contains("rq-active"));
+  clickTool("menu");
+  ok("i15: Menu toolbar button opens the menu", overlays().length === 1);
+  byId("m-close").click();
+  clickTool("quests");
+  ok("i16: Quests toolbar button opens the goals panel", !!byId("rq-goals-ok"));
+  byId("rq-goals-ok").click();
+  clickTool("familiars");
+  ok("i17: Familiars toolbar button returns", byId("screen-familiars").classList.contains("rq-active"));
+  W.RQGame.showFamiliars();
+  byId("f-back").click();
+  ok("i18: Back button returns to the hub", byId("screen-hub").classList.contains("rq-active"));
+
+  /* ================= (j) maze continuity ================= */
+  console.log("- (j) maze continuity");
+  W.RQSave.reset();
+  W.RQSave.data.onboardingDone = true;
+  W.RQSave.hero("knight").familiar = { id: "quill", stage: 2 };
+  var origLaunchJ = W.RQGame.launchBattle;
+  var launchJ = null, fakeResJ = null;
+  W.RQGame.launchBattle = function (node, mon, heroId, sub, onDone) {
+    launchJ = { node: node, mon: mon, heroId: heroId, sub: sub };
+    onDone(fakeResJ);
+  };
+  function winRes(boss, monsterId) {
+    return { victory: true, xp: 40, coins: 8, levelsGained: [], newBeasts: [],
+             boss: !!boss, monsterId: monsterId, tierMove: null };
+  }
+
+  /* j1: encounter round-trip returns the player to identical x/y + facing. */
+  ok("j1a: overworld opens", OW.open("science") === true);
+  var jwiz = OW.state().wiz;
+  jwiz.x = 200; jwiz.y = 140; jwiz.facing = "left";
+  var roamer = OW.state().monsters.filter(function (m) { return !m.boss; })[0];
+  ok("j1b: a roaming monster exists", !!roamer);
+  var roamUid = roamer.uid;
+  fakeResJ = winRes(false, roamer.def.id);
+  OW._touchMonster(roamer);
+  ok("j1c: battle launched for the touched monster",
+    !!launchJ && launchJ.mon.id === roamer.def.id && launchJ.sub.id === "science");
+  var after = OW.state();
+  ok("j1d: back in the overworld", byId("screen-overworld").classList.contains("rq-active"));
+  ok("j1e: player returns to the exact x/y",
+    after.wiz.x === 200 && after.wiz.y === 140);
+  ok("j1f: player keeps the same facing", after.wiz.facing === "left");
+  ok("j1g: same dungeon", after.subjectId === "science");
+
+  /* j2: defeated monster is gone and stays gone; layout is deterministic. */
+  ok("j2a: defeat persisted per dungeon",
+    W.RQSave.owDefeated("science").indexOf(roamUid) !== -1);
+  var uidsAfter = OW.state().monsters.map(function (m) { return m.uid; });
+  ok("j2b: defeated monster removed from the board", uidsAfter.indexOf(roamUid) === -1);
+  OW.open("science");
+  var uidsRe = OW.state().monsters.map(function (m) { return m.uid; });
+  ok("j2c: still gone on reopen", uidsRe.indexOf(roamUid) === -1);
+  ok("j2d: surviving monster uids are deterministic across opens",
+    uidsAfter.sort().join(",") === uidsRe.sort().join(","));
+
+  /* j3: the defeat survives a save/load cycle (refresh). */
+  W.RQSave.load();
+  ok("j3a: persisted defeat survives reload",
+    W.RQSave.owDefeated("science").indexOf(roamUid) !== -1);
+  OW.open("science");
+  var uidsReload = OW.state().monsters.map(function (m) { return m.uid; });
+  ok("j3b: defeated monster stays gone after save/load", uidsReload.indexOf(roamUid) === -1);
+
+  /* j4: a fled-from monster remains on the board. */
+  W.RQSave.data.owDefeated = {}; W.RQSave.write();
+  OW.open("science");
+  var fleeMon = OW.state().monsters.filter(function (m) { return !m.boss; })[0];
+  var fleeUid = fleeMon.uid;
+  fakeResJ = { victory: false, xp: 5, monsterId: fleeMon.def.id };
+  OW._touchMonster(fleeMon);
+  ok("j4a: back in the overworld after fleeing",
+    byId("screen-overworld").classList.contains("rq-active"));
+  var uidsFlee = OW.state().monsters.map(function (m) { return m.uid; });
+  ok("j4b: fled-from monster remains", uidsFlee.indexOf(fleeUid) !== -1);
+  ok("j4c: fled-from monster never persisted as defeated",
+    W.RQSave.owDefeated("science").indexOf(fleeUid) === -1);
+
+  /* j5: boss battle in the overworld keeps seal progression intact. */
+  W.RQGame.launchBattle = function (node, mon, heroId, sub, onDone) {
+    var S = W.RQSave;
+    if (mon.boss && S.data.bossesBeaten.indexOf(mon.id) === -1) S.data.bossesBeaten.push(mon.id);
+    if (node) S.recordNodeBeaten(sub.id, node.id);
+    S.data.coins += 7; S.write();
+    onDone({ victory: true, xp: 120, coins: 7, levelsGained: [], newBeasts: [],
+             boss: !!mon.boss, monsterId: mon.id, tierMove: null });
+  };
+  OW.open("science");
+  var bossM = OW.state().monsters.filter(function (m) { return m.boss; })[0];
+  ok("j5a: boss roams the maze", !!bossM);
+  var bossId = bossM.def.id;
+  OW._touchMonster(bossM);
+  ok("j5b: boss recorded beaten", W.RQSave.data.bossesBeaten.indexOf(bossId) !== -1);
+  ok("j5c: seal progression intact (1 seal recovered)",
+    W.RQSave.sealsRecovered().length === 1);
+  ok("j5d: next dungeon unlocks (social)", W.RQSave.zoneUnlocked("social") === true);
+  ok("j5e: beaten boss stays gone in the overworld",
+    OW.state().monsters.filter(function (m) { return m.boss; }).length === 0 &&
+    W.RQSave.owDefeated("science").indexOf("boss") !== -1);
+  ok("j5f: Electives Wing still locked pre-2-bosses", OW.open("psychology") === false);
+  W.RQGame.launchBattle = origLaunchJ;
   OW.stop();
 
   /* ---------------- summary ---------------- */
