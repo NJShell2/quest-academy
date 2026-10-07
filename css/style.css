@@ -512,3 +512,98 @@ body.rq-asking .rq-pointer { display: none !important; }
   margin: -24px 0 0 -24px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #ffe27a, #f5b942);
   border: 2px solid #7a4d12; }
+
+/* ---------- full-screen theatrical story intro (engine/stage.js) ---------- */
+.rq-qffull { position: fixed; inset: 0; z-index: 1000; overflow: hidden; background: #141026; }
+.rq-qf-hall { position: absolute; inset: 0; z-index: 1;
+  background: radial-gradient(ellipse at 50% 28%, #322765 0%, #141026 72%);
+  transition: filter 0.8s; }
+.rq-qffull.rq-qf-dark .rq-qf-hall { filter: brightness(0.5); }
+.rq-qf-sealrow { position: absolute; top: 5%; left: 0; right: 0; text-align: center; }
+.rq-qf-seal { display: inline-block; margin: 0 1.1vmin; font-size: 3.1rem;
+  filter: drop-shadow(0 0 12px #9fd8ff); animation: rq-qf-glow 2.4s ease-in-out infinite; }
+@keyframes rq-qf-glow {
+  50% { filter: drop-shadow(0 0 22px #ffd75e); transform: translateY(-5px); } }
+.rq-qffull.rq-qf-dark .rq-qf-seal { filter: grayscale(0.7) brightness(0.55); animation: none; }
+.rq-qf-bannerl, .rq-qf-bannerr { position: absolute; top: 13%; font-size: 4rem;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+.rq-qf-bannerl { left: 5%; }
+.rq-qf-bannerr { right: 5%; }
+.rq-qf-columns { position: absolute; bottom: 19%; left: 0; right: 0; text-align: center;
+  font-size: 5rem; opacity: 0.75; }
+.rq-qf-candles { position: absolute; bottom: 21%; left: 0; right: 0; text-align: center;
+  font-size: 1.9rem; letter-spacing: 0.6em; }
+.rq-qf-spotlight { position: absolute; top: 0; left: 50%; width: 34vmin; height: 86%;
+  transform: translateX(-50%); z-index: 2; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,240,190,0.30), rgba(255,240,190,0.03));
+  clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%);
+  transition: width 0.8s, opacity 0.8s; }
+.rq-qffull.rq-qf-spot-wren .rq-qf-spotlight { width: 52vmin; opacity: 1; }
+.rq-qffull.rq-qf-dark .rq-qf-spotlight { opacity: 0.45; }
+.rq-qf-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 20%; z-index: 3;
+  background: repeating-linear-gradient(90deg, #4a3423 0 46px, #3d2a1c 46px 92px);
+  border-top: 4px solid #6b4e2e; }
+.rq-qf-flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 25;
+  pointer-events: none; }
+.rq-qffull.rq-qf-shatterflash .rq-qf-flash { animation: rq-qf-flash 0.6s; }
+@keyframes rq-qf-flash { 15% { opacity: 0.65; } 100% { opacity: 0; } }
+.rq-qf-actor { position: absolute; bottom: 22%; z-index: 4; font-size: 6.5rem;
+  transform: translateX(-50%); transition: left 1.4s ease-in-out;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.7)); }
+.rq-qf-unmaker { font-size: 8rem; filter: drop-shadow(0 0 20px #7a2be0); }
+.rq-qf-off-l { left: -12%; }
+.rq-qf-left { left: 24%; }
+.rq-qf-center { left: 50%; }
+.rq-qf-right { left: 76%; }
+.rq-qf-off-r { left: 112%; }
+.rq-qf-fx { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.rq-qf-shard { position: absolute; bottom: 58%; left: 50%; font-size: 2.6rem; }
+.rq-qf-scatter1 { animation: rq-qf-fly1 2.4s ease-out forwards; }
+.rq-qf-scatter2 { animation: rq-qf-fly2 2.4s ease-out forwards; }
+.rq-qf-scatter3 { animation: rq-qf-fly3 2.4s ease-out forwards; }
+.rq-qf-scatter4 { animation: rq-qf-fly4 2.4s ease-out forwards; }
+.rq-qf-scatter5 { animation: rq-qf-fly5 2.4s ease-out forwards; }
+.rq-qf-scatter6 { animation: rq-qf-fly6 2.4s ease-out forwards; }
+.rq-qf-scatter7 { animation: rq-qf-fly7 2.4s ease-out forwards; }
+@keyframes rq-qf-fly1 { to { transform: translate(-40vw, -28vh) rotate(-50deg); opacity: 0; } }
+@keyframes rq-qf-fly2 { to { transform: translate(-26vw, -40vh) rotate(-25deg); opacity: 0; } }
+@keyframes rq-qf-fly3 { to { transform: translate(-12vw, -34vh) rotate(15deg); opacity: 0; } }
+@keyframes rq-qf-fly4 { to { transform: translate(0, -44vh) rotate(30deg); opacity: 0; } }
+@keyframes rq-qf-fly5 { to { transform: translate(13vw, -33vh) rotate(-20deg); opacity: 0; } }
+@keyframes rq-qf-fly6 { to { transform: translate(27vw, -39vh) rotate(45deg); opacity: 0; } }
+@keyframes rq-qf-fly7 { to { transform: translate(41vw, -27vh) rotate(60deg); opacity: 0; } }
+.rq-qf-questbanner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+  z-index: 26; background: rgba(20,14,40,0.92); border: 2px solid #ffd75e; border-radius: 10px;
+  padding: 10px 18px; color: #ffd75e; font-size: 1.4rem; font-weight: bold; text-align: center;
+  white-space: nowrap; }
+.rq-qf-questbanner span { font-size: 1.1rem; color: #d9c9a8; font-weight: normal; }
+.rq-qf-titlecard { position: absolute; top: 34%; left: 0; right: 0; text-align: center;
+  z-index: 30; font-size: 2.4rem; color: #ffd75e; opacity: 0; transition: opacity 0.4s;
+  text-shadow: 0 3px 10px #000; pointer-events: none; }
+.rq-qf-titlecard.rq-qf-show { opacity: 1; }
+.rq-qf-dialog { position: absolute; left: 50%; transform: translateX(-50%); bottom: 4%;
+  width: min(92vw, 640px); z-index: 20; background: rgba(20,14,40,0.94);
+  border: 2px solid #ffd75e; border-radius: 12px; padding: 12px 16px; text-align: center; }
+.rq-qf-speaker { color: #ffd75e; font-weight: bold; font-size: 1.2rem; }
+.rq-qf-speaker.rq-qf-villain { color: #ff9d9d; }
+.rq-qf-line { color: #ffe9b8; font-size: 1.15rem; line-height: 1.5; margin: 6px 0 10px; }
+.rq-qf-next { margin: 0 auto; }
+.rq-qf-skip { position: absolute; top: 10%; right: 14px; z-index: 42; }
+.rq-qf-curtain { position: absolute; top: 0; bottom: 0; width: 52%; z-index: 40;
+  background: repeating-linear-gradient(90deg, #7a0f1f 0 26px, #5d0a16 26px 52px);
+  transition: transform 1.6s ease-in-out; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
+.rq-qf-curtain-l { left: 0; border-radius: 0 0 40% 0; }
+.rq-qf-curtain-r { right: 0; border-radius: 0 0 0 40%; }
+.rq-qffull.rq-qf-open .rq-qf-curtain-l { transform: translateX(-103%); }
+.rq-qffull.rq-qf-open .rq-qf-curtain-r { transform: translateX(103%); }
+.rq-qf-valance { position: absolute; top: 0; left: 0; right: 0; height: 7%; z-index: 41;
+  background: linear-gradient(#8f1626, #5d0a16); border-bottom: 3px solid #d4a017; }
+@media (max-width: 640px) {
+  .rq-qf-actor { font-size: 4.2rem; }
+  .rq-qf-unmaker { font-size: 5.2rem; }
+  .rq-qf-seal { font-size: 2rem; }
+  .rq-qf-bannerl, .rq-qf-bannerr { font-size: 2.6rem; }
+  .rq-qf-line { font-size: 1.02rem; }
+  .rq-qf-titlecard { font-size: 1.7rem; }
+  .rq-qf-questbanner { font-size: 1.1rem; white-space: normal; }
+}
