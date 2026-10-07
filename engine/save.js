@@ -41,14 +41,14 @@
               activeSubject: pack().subjects[0].id,
               wizardName: "", grade: null,
               onboardingDone: false, onboardingStep: "grade",
-              guideMet: false, villainSceneSeen: false,
+              guideMet: false, villainSceneSeen: false, stageIntroSeen: false,
               heroes: {}, beastsUnlocked: [], bossesBeaten: [],
               chestsOpened: 0, bestStreak: 0,
               items: { potion: 1, crystal: 0, elixir: 0, lucky: 0 },
               luckyNext: false, elixirTurns: 0,
               inventory: [], goals: defaultGoals(),
               quests: { sealsRecovered: [] },
-              petbook: [], seenMonsters: [], zones: {},
+              petbook: [], seenMonsters: [], zones: {}, owDefeated: {},
               daily: { lastClaim: "", streak: 0 } };
     pack().classes.forEach(function (c) { s.heroes[c.id] = freshHero(); });
     pack().beasts.forEach(function (b) { s.heroes[b.id] = freshHero(); });
@@ -131,10 +131,12 @@
     if (!Array.isArray(s.petbook)) s.petbook = [];
     if (!Array.isArray(s.seenMonsters)) s.seenMonsters = [];
     if (!s.zones) s.zones = {};
+    if (!s.owDefeated) s.owDefeated = {};
     if (!s.daily) s.daily = { lastClaim: "", streak: 0 };
     if (typeof s.wizardName !== "string") s.wizardName = "";
     if (typeof s.onboardingDone !== "boolean") s.onboardingDone = true;
     if (typeof s.villainSceneSeen !== "boolean") s.villainSceneSeen = false;
+    if (typeof s.stageIntroSeen !== "boolean") s.stageIntroSeen = false;
   }
 
   var Save = {
@@ -256,7 +258,7 @@
       if (!def) return null;
       return { id: fam.id, stage: fam.stage, name: def.name, icon: def.icon,
                rarity: def.rarity, stats: def.stats, desc: def.desc,
-               classic: !!fam.classic };
+               classic: !!fam.classic, rescued: !!def.rescued };
     },
     familiarDmg: function (heroId) {
       var fam = this.activeFamiliar(heroId);
@@ -352,6 +354,20 @@
       if (!z) { z = { nodesBeaten: [] }; this.data.zones[zoneId] = z; }
       if (z.nodesBeaten.indexOf(nodeId) === -1) z.nodesBeaten.push(nodeId);
       this.write();
+    },
+    /* ---- overworld monster defeats: a beaten roaming monster stays gone.
+       Persisted per dungeon so a refresh or a revisit never resurrects
+       it. Monsters the player fled from (or lost to) are never recorded
+       here, so they stay on the board. ---- */
+    recordOwDefeated: function (subjectId, uid) {
+      if (!this.data.owDefeated) this.data.owDefeated = {};
+      var list = this.data.owDefeated[subjectId];
+      if (!list) { list = []; this.data.owDefeated[subjectId] = list; }
+      if (list.indexOf(uid) === -1) { list.push(uid); this.write(); }
+    },
+    owDefeated: function (subjectId) {
+      var all = this.data.owDefeated || {};
+      return all[subjectId] || [];
     },
     nodeUnlocked: function (zoneId, idx) {
       if (!this.zoneUnlocked(zoneId)) return false;
