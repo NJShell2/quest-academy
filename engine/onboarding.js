@@ -63,6 +63,9 @@
       }
       if (g.reward && !g.rewardGiven) {
         g.rewardGiven = true;
+        /* The reward lands in the Backpack first, so tapping "Not now"
+           can never lose it: it stays equippable from the inventory. */
+        window.RQSave.grantGear(g.reward);
         window.RQSave.write();
         window.RQOnboard.grantGearReward(g.reward, after);
       } else if (after) {
@@ -70,11 +73,22 @@
       }
       return true;
     },
+    /* Goal toast: tap to dismiss, auto-dismisses, and never pops up
+       over an active question (it waits until the question resolves). */
     toast: function (g) {
-      var t = el("div", "rq-goaltoast", "✅ Goal complete: <b>" + g.title + "</b>");
-      document.body.appendChild(t);
-      setTimeout(function () { t.classList.add("rq-show"); }, 30);
-      setTimeout(function () { t.remove(); }, 3200);
+      function show() {
+        if (document.body.classList.contains("rq-asking")) {
+          setTimeout(show, 600);
+          return;
+        }
+        var t = el("div", "rq-goaltoast", "✅ Goal complete: <b>" + g.title + "</b>");
+        t.title = "Tap to dismiss";
+        t.addEventListener("click", function () { t.remove(); });
+        document.body.appendChild(t);
+        setTimeout(function () { t.classList.add("rq-show"); }, 30);
+        setTimeout(function () { t.remove(); }, 3200);
+      }
+      show();
     },
     rewardName: function (gearId) {
       var d = window.RQSave.gearDef(gearId);
@@ -124,6 +138,32 @@
     ov.innerHTML = '<div class="rq-modal' + (wide ? " rq-widemodal" : "") + '">' + html + "</div>";
     document.body.appendChild(ov);
     return ov;
+  }
+
+  /* Theatrical stage builder (CSS + emoji only): red velvet curtains on
+     both sides with a top valance, a spotlight cone from above with its
+     pool of light, a wooden plank stage floor, and a painted backdrop of
+     the Academy halls with the 7 Seals of Knowledge. big = full-size
+     villain stage; otherwise a compact ministage for quest story cards. */
+  function stageHTML(actorId, big, actorIcon, onstage) {
+    return '<div class="rq-stage' + (big ? "" : " rq-ministage") + '">' +
+      '<div class="rq-stagebackdrop">' +
+        '<span class="rq-bk-seals">🔮 🔮 🔮 🔮 🔮 🔮 🔮</span>' +
+        '<span class="rq-bk-bannerl">🚩</span><span class="rq-bk-bannerr">🚩</span>' +
+        '<span class="rq-bk-hall">🏰</span>' +
+        '<span class="rq-bk-candles"><span>🕯️</span><span>🕯️</span></span>' +
+      "</div>" +
+      '<div class="rq-spotlight"></div>' +
+      '<div class="rq-spotpool"></div>' +
+      '<div class="rq-stagefloor"></div>' +
+      '<div class="rq-curtain rq-curtain-left"></div>' +
+      '<div class="rq-curtain rq-curtain-right"></div>' +
+      '<div class="rq-valance"></div>' +
+      '<div class="rq-actor' + (big ? "" : " rq-miniactor") +
+        (onstage ? "" : " rq-offstage") + '"' +
+        (actorId ? ' id="' + actorId + '"' : "") + ">" +
+        (actorIcon || "") + "</div>" +
+    "</div>";
   }
 
   /* Animated hand pointer that guides every click in scripted sequences. */
@@ -250,10 +290,12 @@
       this.grantGearReward("scholars-wand", function () { self.tutorialBattle(); }, true);
     },
 
-    /* Wear / Not now modal for any gear gift. firstGift tweaks the copy. */
+    /* Wear / Not now modal for any gear gift. firstGift tweaks the copy.
+       A missing gear def must never strand the player: the flow advances. */
     grantGearReward: function (gearId, after, firstGift) {
       var S = window.RQSave, A = window.RQAudio;
       var def = S.gearDef(gearId);
+      if (!def) { if (after) after(); return; }
       var ov = modal('<div class="rq-bossintro">' + def.icon + "</div>" +
         "<h2>🎁 " + (firstGift ? "A gift from Professor Wren!" : "You earned gear!") + "</h2>" +
         '<div class="rq-gearname">' + def.name + "</div>" +
@@ -323,6 +365,26 @@
         '<div class="rq-itembar" id="tut-items"></div>';
       scr.appendChild(wrap);
       showScreen("screen-battle");
+
+      /* Coach bubble: tap it to dismiss (it never covers the questions),
+         and a small button brings Professor Wren's tips back. */
+      (function () {
+        var coachEl = $("tut-coach");
+        if (!coachEl) return;
+        coachEl.title = "Tap to hide Professor Wren's tips";
+        coachEl.addEventListener("click", function () {
+          coachEl.style.display = "none";
+          if ($("tut-coachreopen")) return;
+          var rb = el("button", "rq-ghostbtn rq-coachreopen", "🦉 Tips");
+          rb.type = "button"; rb.id = "tut-coachreopen";
+          rb.addEventListener("click", function () {
+            coachEl.style.display = "";
+            rb.remove();
+            window.RQAudio.SFX.click();
+          });
+          wrap.insertBefore(rb, wrap.firstChild);
+        });
+      })();
 
       var card = el("button", "rq-spell", '<span class="rq-spellicon">' + sp.icon + "</span>" +
         '<span class="rq-spellname">' + sp.name + "</span>" +
@@ -529,21 +591,37 @@
       var ov = modal("<h2>🦉 Choose your familiar!</h2>" +
         '<p class="rq-sub">Professor Wren: "Every scholar needs a companion. Pick one, it is yours to keep. It evolves at level 7!"</p>' +
         '<div class="rq-famgrid">' + cards + "</div>", true);
+      /* One tap, one familiar: ignore repeats so a double-tap can never
+         stack two reward modals or two villain cutscenes on top of each
+         other and strand the player. */
+      var assigned = false;
+      function advance() {
+        ov.remove();
+        window.RQGoals.complete("choose-familiar", function () {
+          if (done) done();
+          else self.villainCutscene();
+        });
+      }
       Array.prototype.forEach.call(ov.querySelectorAll("[data-fam]"), function (btn) {
         btn.addEventListener("click", function () {
-          var fid = btn.getAttribute("data-fam");
-          var f = fams.filter(function (x) { return x.id === fid; })[0];
-          S.hero(heroId).familiar = { id: fid, stage: 2 };
-          S.addToPetbook({ id: fid, name: f.name, icon: f.icon, rarity: f.rarity,
-                           color: (pack().rarityColors || {})[f.rarity],
-                           stats: f.stats, desc: f.desc, starter: true });
-          S.write();
-          A.SFX.unlock();
-          ov.remove();
-          window.RQGoals.complete("choose-familiar", function () {
-            if (done) done();
-            else self.villainCutscene();
-          });
+          if (assigned) return;
+          assigned = true;
+          btn.disabled = true;
+          try {
+            var fid = btn.getAttribute("data-fam");
+            var f = fams.filter(function (x) { return x.id === fid; })[0];
+            S.hero(heroId).familiar = { id: fid, stage: 2 };
+            S.addToPetbook({ id: fid, name: f.name, icon: f.icon, rarity: f.rarity,
+                             color: (pack().rarityColors || {})[f.rarity],
+                             stats: f.stats, desc: f.desc, starter: true });
+            S.write();
+            A.SFX.unlock();
+          } catch (err) {
+            /* A save-layer hiccup must never strand the player: the flow
+               always advances to the reward and the villain cutscene. */
+            if (window.console && console.warn) console.warn("familiar assign failed:", err);
+          }
+          advance();
         });
       });
     },
@@ -555,7 +633,7 @@
       var V = pack().villain;
       var ov = el("div", "rq-overlay rq-villainov");
       ov.innerHTML = '<div class="rq-modal rq-villainmodal">' +
-        '<div class="rq-villainicon">' + V.icon + "</div>" +
+        stageHTML("rq-vactor", true, V.icon, false) +
         "<h2>" + V.name + "</h2>" +
         '<div class="rq-villaintitle">' + V.title + "</div>" +
         '<p class="rq-sub" id="rq-vtext"></p>' +
@@ -565,7 +643,7 @@
       var stage = 0;
       var texts = [
         "The 7 Seals of Knowledge kept the Academy's light burning for a thousand years.",
-        "Then HE came. Watch...",
+        "Then HE came. From the wings of the stage... watch.",
         "Shattered. Scattered across the 7 dungeons. Only a true scholar can recover them."
       ];
       $("rq-vtext").textContent = texts[0];
@@ -574,6 +652,10 @@
         window.RQAudio.SFX.click();
         stage++;
         if (stage === 1) {
+          /* THE UNMAKER enters the stage from the wings, into the spotlight. */
+          var actor = $("rq-vactor");
+          if (actor) { actor.classList.remove("rq-offstage"); actor.classList.add("rq-enters"); }
+          window.RQAudio.SFX.boss();
           $("rq-vtext").textContent = texts[1];
           $("rq-vnext").textContent = "Watch ➜";
         } else if (stage === 2) {
@@ -606,6 +688,7 @@
       S.data.villainSceneSeen = true;
       S.write();
       var ov = modal("<h2>🌟 MAIN QUEST</h2>" +
+        stageHTML(null, false, "🔮", true) +
         '<div class="rq-questcard"><div class="rq-questtitle">Recover the 7 Seals</div>' +
         '<p class="rq-sub">THE UNMAKER shattered the 7 Seals of Knowledge. ' +
         "Each dungeon boss guards one seal. Defeat all 7 bosses, reclaim every seal, " +
@@ -711,7 +794,7 @@
           body: "Fight monsters, answer to cast, beat the 7 bosses, and take back every seal." }
       ];
       var i = 0;
-      var ov = modal('<div class="rq-bossintro" id="rq-qc-icon"></div>' +
+      var ov = modal(stageHTML("rq-qc-icon", false, "", true) +
         '<h2 id="rq-qc-title"></h2><p class="rq-sub" id="rq-qc-body"></p>' +
         '<button class="rq-bigbtn" id="rq-qc-next">Next ➜</button>');
       function show() {
