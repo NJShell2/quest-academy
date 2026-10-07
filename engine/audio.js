@@ -1,4 +1,4 @@
-/* Reading Quest engine: audio (Web Audio SFX + speech synthesis). No audio files needed. */
+/* Quest Academy engine: audio (Web Audio SFX + speech synthesis). No audio files needed. */
 (function () {
   "use strict";
   var ctx = null;
@@ -48,20 +48,95 @@
     }
   };
 
-  var Speech = {
-    say: function (text) {
+  /* Speech: text-to-speech with smart voice selection.
+     Voices load asynchronously in browsers, so we warm the cache on the
+     voiceschanged event and re-pick on every utterance. Preference order:
+     Google US English, Google UK English, Microsoft natural voices
+     (Aria, Guy, Zira, David), Apple voices (Samantha), any en-US voice,
+     any English voice, then the system default. Everything degrades
+     silently when speechSynthesis is unavailable. */
+  var Speech = (function () {
+    function supported() {
+      try { return ("speechSynthesis" in window) && !!window.speechSynthesis; }
+      catch (e) { return false; }
+    }
+    function voices() {
+      if (!supported()) return [];
+      try { return window.speechSynthesis.getVoices() || []; }
+      catch (e) { return []; }
+    }
+    function find(list, pred) {
+      for (var i = 0; i < list.length; i++) {
+        if (pred(list[i])) return list[i];
+      }
+      return null;
+    }
+    /* Exposed for tests: pick the best voice from the current list. */
+    function pickVoice() {
+      var vs = voices();
+      if (!vs.length) return null;
+      function nm(v) { return v.name || ""; }
+      function lg(v) { return (v.lang || "").toLowerCase(); }
+      var v;
+      v = find(vs, function (x) { return /google us english/i.test(nm(x)); });
+      if (v) return v;
+      v = find(vs, function (x) { return /google uk english/i.test(nm(x)); });
+      if (v) return v;
+      v = find(vs, function (x) {
+        return /microsoft/i.test(nm(x)) && /(aria|guy|zira|david)/i.test(nm(x));
+      });
+      if (v) return v;
+      v = find(vs, function (x) { return /samantha/i.test(nm(x)); });
+      if (v) return v;
+      v = find(vs, function (x) { return lg(x) === "en-us"; });
+      if (v) return v;
+      v = find(vs, function (x) { return lg(x).indexOf("en") === 0; });
+      if (v) return v;
+      return vs[0];
+    }
+    function warmVoices() { voices(); }
+    try {
+      if (supported()) {
+        warmVoices();
+        var synth = window.speechSynthesis;
+        if (synth.addEventListener) {
+          synth.addEventListener("voiceschanged", warmVoices);
+        } else {
+          synth.onvoiceschanged = warmVoices;
+        }
+      }
+    } catch (e) { /* speech unavailable, stay silent */ }
+
+    function utter(text, opts) {
       try {
-        if (!("speechSynthesis" in window)) return;
+        if (!supported()) return false;
         window.speechSynthesis.cancel();
         var u = new SpeechSynthesisUtterance(text);
-        u.rate = 0.85; u.pitch = 1.1;
+        var v = pickVoice();
+        if (v) u.voice = v;
+        u.rate = (opts && opts.rate) || 0.95;
+        u.pitch = (opts && opts.pitch) || 1.0;
         window.speechSynthesis.speak(u);
-      } catch (e) { /* audio unavailable, keep playing silently */ }
-    },
-    stop: function () {
-      try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch (e) {}
+        return true;
+      } catch (e) { return false; /* keep playing silently */ }
     }
-  };
+
+    return {
+      say: function (text) { return utter(text); },
+      /* Read a word aloud letter by letter with pauses between letters. */
+      spell: function (word) {
+        var letters = String(word == null ? "" : word)
+          .replace(/[^A-Za-z]/g, "").toUpperCase().split("");
+        if (!letters.length) return false;
+        return utter(letters.join(", ") + ".", { rate: 0.85 });
+      },
+      stop: function () {
+        try { if (supported()) window.speechSynthesis.cancel(); } catch (e) {}
+      },
+      supported: supported,
+      pickVoice: pickVoice
+    };
+  })();
 
   window.RQAudio = { SFX: SFX, Speech: Speech, ensure: ensure };
 })();
