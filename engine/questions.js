@@ -107,7 +107,18 @@
       container.innerHTML = "";
       var box = el("div", "rq-q");
       box.appendChild(el("div", "rq-qprompt", q.prompt));
-      box.appendChild(speakBtn(q.answer));
+      var hearRow = el("div", "rq-row");
+      hearRow.appendChild(speakBtn(q.answer));
+      var spellIt = el("button", "rq-speak", "🔤 Spell it");
+      spellIt.type = "button";
+      spellIt.title = "Hear the word spelled out letter by letter";
+      spellIt.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        window.RQAudio.ensure();
+        window.RQAudio.Speech.spell(q.answer);
+      });
+      hearRow.appendChild(spellIt);
+      box.appendChild(hearRow);
       autoSpeak(q.answer);
       var target = el("div", "rq-buildtarget", "");
       box.appendChild(target);
@@ -256,7 +267,13 @@
   window.RQQuestions = {
     ask: function (container, q) {
       var r = RENDERERS[q.kind] || choiceRenderer;
-      return r(container, q);
+      /* Flag the page while a question is on screen so transient popups
+         (guide pointer, goal toasts) step aside and never cover the
+         letters or answer buttons. */
+      document.body.classList.add("rq-asking");
+      function done() { document.body.classList.remove("rq-asking"); }
+      return r(container, q).then(function (res) { done(); return res; },
+                                  function (err) { done(); throw err; });
     }
   };
 })();
