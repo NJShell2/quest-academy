@@ -496,6 +496,7 @@ body.rq-asking .rq-pointer { display: none !important; }
     repeating-linear-gradient(0deg, transparent 0 34px, rgba(255,255,255,0.03) 34px 35px),
     repeating-linear-gradient(90deg, transparent 0 34px, rgba(255,255,255,0.03) 34px 35px),
     linear-gradient(#241a4a, #1a1033); }
+.rq-ow-maze { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
 .rq-ow-wiz { position: absolute; transform: translate(-50%, -50%); font-size: 2.2rem; z-index: 3;
   filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6)); will-change: left, top; pointer-events: none; }
 .rq-ow-mon { position: absolute; transform: translate(-50%, -50%); font-size: 2.2rem; z-index: 2;
