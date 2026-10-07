@@ -122,7 +122,7 @@
     }
 
     return {
-      say: function (text) { return utter(text); },
+      say: function (text, opts) { return utter(text, opts); },
       /* Read a word aloud letter by letter with pauses between letters. */
       spell: function (word) {
         var letters = String(word == null ? "" : word)
