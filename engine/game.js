@@ -88,7 +88,7 @@
         window.RQAudio.ensure(); window.RQAudio.SFX.click();
         if (this._tipTimer) { clearInterval(this._tipTimer); this._tipTimer = null; }
         if (window.RQSave.data.onboardingDone) Game.showClasses();
-        else window.RQOnboard.start();
+        else Game.startStoryIntro();
       }.bind(this));
       $("t-reset").addEventListener("click", function () {
         if (confirm("Erase your whole saved game and start over?")) {
@@ -96,6 +96,16 @@
           Game.showTitle();
         }
       });
+    },
+
+    /* ---------- full-screen theatrical story intro ----------
+       Curtains open on Professor Wren and THE UNMAKER; the shattered
+       Seven Seals set up the quest. The first viewing plays through;
+       replays get a Skip button. Afterwards the stage flows into the
+       scripted onboarding (grade selection first). */
+    startStoryIntro: function () {
+      if (this._tipTimer) { clearInterval(this._tipTimer); this._tipTimer = null; }
+      window.RQStage.play(function () { window.RQOnboard.start(); });
     },
 
     /* ---------- class select ---------- */
