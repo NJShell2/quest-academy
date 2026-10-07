@@ -72,7 +72,16 @@
         $("b-magic").style.width = Math.max(0, state.magic / state.maxMagic * 100) + "%";
         $("b-magicnum").textContent = Math.round(state.magic) + "/" + state.maxMagic + " Magic";
       }
-      function say(t) { msgEl.textContent = t; }
+      function say(t) { state.lastMsg = t; msgEl.textContent = t; }
+      /* Transient shout (streak celebrations): shows, then falls back to
+         the previous battle message so it never sticks around. */
+      function shout(t) {
+        msgEl.textContent = t;
+        var back = state.lastMsg;
+        setTimeout(function () {
+          if (!state.over && msgEl.textContent === t && back) msgEl.textContent = back;
+        }, 2200);
+      }
       function shake(id) {
         var e = $(id);
         e.classList.remove("rq-shake"); void e.offsetWidth; e.classList.add("rq-shake");
@@ -229,7 +238,7 @@
             say(sp.name + " hits for " + dmg + "!" + sTxt);
             if (state.streak === 5 || state.streak === 10) {
               A.SFX.streak();
-              say(sTxt + " Amazing! The crowd goes wild!");
+              shout(sTxt + " Amazing! The crowd goes wild!");
             }
             if (S.data.elixirTurns > 0) S.data.elixirTurns--;
             /* cooldowns only matter once the hero knows 2+ spells;
@@ -334,8 +343,11 @@
           "<h2>" + copy.title + "</h2><p>" + copy.body + "</p>" +
           '<button class="rq-bigbtn" id="rq-tier-ok">' + copy.cta + " ➜</button></div>";
         document.body.appendChild(ov);
-        $("rq-tier-ok").addEventListener("click", function () {
-          ov.remove(); done();
+        function dismiss() { ov.remove(); done(); }
+        $("rq-tier-ok").addEventListener("click", dismiss);
+        /* Tapping the backdrop dismisses too: no dead-end popups. */
+        ov.addEventListener("click", function (ev) {
+          if (ev.target === ov) dismiss();
         });
       }
 
@@ -359,6 +371,7 @@
       /* ---- endings ---- */
       function victory(move, rescued) {
         state.over = true;
+        if (window.RQOnboard) window.RQOnboard.clearPointer();
         A.SFX.victory();
         var xp = mon.xp, coins = ri(mon.coins[0], mon.coins[1]);
         if (S.data.luckyNext) { coins *= 2; S.data.luckyNext = false; }
@@ -389,6 +402,7 @@
 
       function defeat() {
         state.over = true;
+        if (window.RQOnboard) window.RQOnboard.clearPointer();
         A.SFX.wrong();
         var consolation = Math.round(mon.xp / 3);
         S.addXp(heroId, consolation);
