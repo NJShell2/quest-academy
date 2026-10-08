@@ -193,6 +193,12 @@
              not from the hero class. ---- */
       function makeQuestion() {
         var tier = S.subjectTier(heroId, subject.id).tier || pack().minTier || 17;
+        /* ---- pass-4 question banks take priority; the old generators
+               below stay as a fallback when a bank is missing. ---- */
+        if (window.QABankSelect) {
+          var bankQ = window.QABankSelect.pick(subject.id, tier);
+          if (bankQ) return bankQ;
+        }
         var gens = subject.gens;
         var g = gens[ri(0, gens.length - 1)];
         var H = pack().helpers;
