@@ -839,7 +839,7 @@
     {"qid":"qa-math-0834","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 2*(1/2) + 2*(1/2)^2 + 2*(1/2)^3 + ... equals:","choices":["3","2","4","1"],"answer":1},
     {"qid":"qa-math-0835","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 1 + 1/2 + 1/2^2 + ... equals:","choices":["Infinity","1","3","2"],"answer":3},
     {"qid":"qa-math-0836","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 2 + 2*(1/4) + 2*(1/4)^2 + ... equals:","choices":["1/2","8/3","2","Infinity"],"answer":1},
-    {"qid":"qa-math-0837","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 2/5 + 2/5^2 + 2/5^3 + ... equals:","choices":["1","5/3","Infinity","2/3"],"answer":3},
+    {"qid":"qa-math-0837","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 2/5 + 2/5^2 + 2/5^3 + ... equals:","choices":["1","5/3","Infinity","1/2"],"answer":3},
     {"qid":"qa-math-0838","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 2*(1/2) + 2*(1/2)^2 + 2*(1/2)^3 + ... equals:","choices":["1","4","Infinity","2"],"answer":3},
     {"qid":"qa-math-0839","kind":"choice","band":3,"tier":32,"prompt":"The infinite sum 1 + 2/5 + 2/5^2 + ... equals:","choices":["2","2/3","5/3","Infinity"],"answer":2},
     {"qid":"qa-math-0840","kind":"choice","band":3,"tier":32,"prompt":"The sum 1 + 1/4 + 1/9 + 1/16 + ... (the sum of 1/n^2 over n >= 1) equals:","choices":["1","Infinity","pi^2/6","pi^2/4"],"answer":2},
