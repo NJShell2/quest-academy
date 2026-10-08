@@ -49,7 +49,7 @@
               inventory: [], goals: defaultGoals(),
               quests: { sealsRecovered: [] },
               petbook: [], seenMonsters: [], zones: {}, owDefeated: {},
-              daily: { lastClaim: "", streak: 0 } };
+              daily: { lastClaim: "", streak: 0 }, qcool: {} };
     pack().classes.forEach(function (c) { s.heroes[c.id] = freshHero(); });
     pack().beasts.forEach(function (b) { s.heroes[b.id] = freshHero(); });
     return s;
@@ -133,6 +133,8 @@
     if (!s.zones) s.zones = {};
     if (!s.owDefeated) s.owDefeated = {};
     if (!s.daily) s.daily = { lastClaim: "", streak: 0 };
+    /* pass-4 question-bank cooldown buffers, per subject, created on demand */
+    if (!s.qcool || typeof s.qcool !== "object") s.qcool = {};
     if (typeof s.wizardName !== "string") s.wizardName = "";
     if (typeof s.onboardingDone !== "boolean") s.onboardingDone = true;
     if (typeof s.villainSceneSeen !== "boolean") s.villainSceneSeen = false;
