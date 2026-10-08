@@ -75,7 +75,14 @@ function load(f) {
   dom.window.eval(fs.readFileSync(path.join(ROOT, f), "utf8"));
 }
 ["engine/audio.js", "engine/save.js", "engine/adaptive.js", "engine/questions.js",
+ "engine/questionbank.js",
  "engine/battle.js", "engine/onboarding.js", "engine/stage.js", "engine/game.js", "engine/maze.js", "engine/overworld.js",
+ "content/bank-arthistory.js", "content/bank-business.js", "content/bank-csprinc.js",
+ "content/bank-english.js", "content/bank-health.js", "content/bank-law.js",
+ "content/bank-math.js", "content/bank-musictheory.js", "content/bank-mythology.js",
+ "content/bank-psychology.js", "content/bank-science.js", "content/bank-social.js",
+ "content/bank-sociology.js", "content/bank-spanish.js", "content/bank-technology.js",
+ "content/bank-writing.js",
  "content/subject-science.js", "content/subject-social.js", "content/subject-english.js",
  "content/subject-health.js", "content/subject-business.js", "content/subject-technology.js",
  "content/subject-psychology.js", "content/subject-sociology.js", "content/subject-law.js",
@@ -372,7 +379,7 @@ var realAsk = W.RQQuestions.ask;
   ].forEach(function (f) {
     var txt = fs.readFileSync(path.join(ROOT, f), "utf8");
     ok("e: no em/en dashes in " + f,
-      txt.indexOf("—") === -1 && txt.indexOf("–") === -1);
+      txt.indexOf("\u2014") === -1 && txt.indexOf("\u2013") === -1);
   });
 
   /* ================= (f) overworld ================= */
@@ -522,7 +529,7 @@ var realAsk = W.RQQuestions.ask;
   var wrenLines = allBeats.filter(function (b) { return b.speaker === "Professor Wren"; });
   ok("h9: Professor Wren guides the play", wrenLines.length >= 5);
   var dashy = allBeats.some(function (b) {
-    return /—|–/.test(b.line || "") || /—|–/.test(b.nar || "");
+    return /\u2014|\u2013/.test(b.line || "") || /\u2014|\u2013/.test(b.nar || "");
   });
   ok("h10: no em/en dashes in stage dialogue", !dashy);
 
@@ -757,6 +764,137 @@ var realAsk = W.RQQuestions.ask;
   ok("j5f: Electives Wing still locked pre-2-bosses", OW.open("psychology") === false);
   W.RQGame.launchBattle = origLaunchJ;
   OW.stop();
+
+  /* ================= (k) pass-4 question banks + cooldown ================= */
+  console.log("- (k) pass-4 question banks");
+  var subjectsK = ["arthistory","business","csprinc","english","health","law","math",
+    "musictheory","mythology","psychology","science","social","sociology","spanish",
+    "technology","writing"];
+  var QB = W.QABankSelect;
+  ok("k0: QABankSelect defined", !!QB);
+  ok("k0b: all 16 banks loaded with 1000 items each", subjectsK.every(function (s) {
+    return W.QABank && W.QABank[s] && W.QABank[s].length === 1000;
+  }));
+
+  /* (a) schema-valid picks for all 16 subjects at tiers 18/22/26/30,
+         asserting item.band matches the expected band. */
+  W.RQSave.data.qcool = {};
+  var tierBand = [[18,0],[22,1],[26,2],[30,3]];
+  var schemaOk = true, bandOk = true;
+  function qaSchemaValid(q) {
+    /* choice, story (choice with passage), and order (sequencing) shapes;
+       all three are renderer-supported. */
+    if (!q || typeof q.qid !== "string" || typeof q.kind !== "string" ||
+        typeof q.prompt !== "string" || typeof q.band !== "number" ||
+        q.band < 0 || q.band > 3) return false;
+    if (q.kind === "choice" || q.kind === "story") {
+      return Array.isArray(q.choices) && q.choices.length >= 2 &&
+        typeof q.answer === "number" && q.answer >= 0 && q.answer < q.choices.length &&
+        (q.kind !== "story" || typeof q.passage === "string");
+    }
+    if (q.kind === "order") {
+      return Array.isArray(q.items) && q.items.length >= 2 &&
+        Array.isArray(q.answer) && q.answer.length === q.items.length;
+    }
+    return false;
+  }
+  subjectsK.forEach(function (s) {
+    tierBand.forEach(function (tb) {
+      var q = QB.pick(s, tb[0]);
+      if (!qaSchemaValid(q)) schemaOk = false;
+      if (!q || q.band !== tb[1]) bandOk = false;
+    });
+  });
+  ok("k1: pick schema-valid for 16 subjects x 4 tiers", schemaOk);
+  ok("k2: item.band matches tier band (18->0, 22->1, 26->2, 30->3)", bandOk);
+
+  /* (b) cooldown sim: 100 picks on math, 0 repeats within any 20-window. */
+  W.RQSave.data.qcool = {};
+  var qids = [];
+  for (var ki = 0; ki < 100; ki++) qids.push(QB.pick("math", 22).qid);
+  var repeatOk = true;
+  for (var kj = 0; kj < qids.length; kj++) {
+    for (var kw = Math.max(0, kj - 20); kw < kj; kw++) {
+      if (qids[kj] === qids[kw]) { repeatOk = false; break; }
+    }
+    if (!repeatOk) break;
+  }
+  ok("k3: 100 math picks, 0 repeats within any 20-window", repeatOk);
+
+  /* (c) buffer cap 20. */
+  ok("k4: qcool buffer capped at 20", W.RQSave.data.qcool.math.length === 20);
+
+  /* (d) tiny-pool fallback never throws. */
+  var savedMath = W.QABank.math;
+  W.QABank.math = [
+    { qid: "t1", kind: "choice", band: 0, tier: 18, prompt: "p1",
+      choices: ["a","b"], answer: 0 },
+    { qid: "t2", kind: "choice", band: 0, tier: 18, prompt: "p2",
+      choices: ["a","b"], answer: 1 },
+    { qid: "t3", kind: "choice", band: 0, tier: 18, prompt: "p3",
+      choices: ["a","b"], answer: 0 }
+  ];
+  W.RQSave.data.qcool = {};
+  var tinyOk = true, tinyPick = null;
+  try {
+    for (var kt = 0; kt < 30; kt++) tinyPick = QB.pick("math", 22);
+  } catch (e) { tinyOk = false; }
+  ok("k5: tiny pool (3 items, 30 picks) never throws", tinyOk && !!tinyPick);
+  ok("k6: missing bank returns null", QB.pick("nosuchsubject", 22) === null);
+  W.QABank.math = savedMath;
+
+  /* (e) qcool survives a save/load round trip. */
+  W.RQSave.data.qcool = { math: ["qa-math-0001", "qa-math-0002"] };
+  W.RQSave.write();
+  W.RQSave.load();
+  ok("k7: qcool survives save/load",
+    W.RQSave.data.qcool && W.RQSave.data.qcool.math &&
+    W.RQSave.data.qcool.math.join(",") === "qa-math-0001,qa-math-0002");
+
+  /* (f) cross-subject isolation: math buffer never excludes science items. */
+  W.RQSave.data.qcool = {
+    math: W.QABank.math.filter(function (q) { return q.band === 1; })
+      .map(function (q) { return q.qid; }).slice(0, 20)
+  };
+  var sciQ = QB.pick("science", 22);
+  ok("k8: math buffer does not exclude science questions",
+    !!sciQ && sciQ.qid.indexOf("qa-science-") === 0);
+  ok("k9: science gets its own buffer",
+    Array.isArray(W.RQSave.data.qcool.science) &&
+    W.RQSave.data.qcool.science.length === 1);
+  /* qcool backfill: a save missing qcool entirely gets it on load. */
+  delete W.RQSave.data.qcool;
+  W.RQSave.write();
+  W.RQSave.load();
+  ok("k10: qcool backfilled on load when missing",
+    W.RQSave.data.qcool && typeof W.RQSave.data.qcool === "object");
+
+  /* wiring checks: index.html tags and battle.js hook. */
+  var htmlK = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  ok("k11: index.html loads engine/questionbank.js after engine/questions.js",
+    htmlK.indexOf("engine/questionbank.js") !== -1 &&
+    htmlK.indexOf("engine/questions.js") < htmlK.indexOf("engine/questionbank.js"));
+  ok("k12: index.html has all 16 bank tags",
+    subjectsK.every(function (s) {
+      return htmlK.indexOf('content/bank-' + s + '.js') !== -1;
+    }));
+  var battleSrc = fs.readFileSync(path.join(ROOT, "engine/battle.js"), "utf8");
+  ok("k13: battle.js makeQuestion tries QABankSelect before gens",
+    battleSrc.indexOf("QABankSelect.pick") !== -1 &&
+    battleSrc.indexOf("QABankSelect.pick") < battleSrc.indexOf("subject.gens"));
+
+  /* (g) em-dash scan of all changed files. Dash chars built via escapes so
+         the test's own source never contains the literals. */
+  var changedK = ["engine/questionbank.js", "engine/save.js", "engine/battle.js",
+    "index.html", "tests/test.js"].concat(subjectsK.map(function (s) {
+      return "content/bank-" + s + ".js";
+    }));
+  var dashAllOk = true, EM = "\u2014", EN = "\u2013";
+  changedK.forEach(function (f) {
+    var txt = fs.readFileSync(path.join(ROOT, f), "utf8");
+    if (txt.indexOf(EM) !== -1 || txt.indexOf(EN) !== -1) dashAllOk = false;
+  });
+  ok("k14: no em/en dashes in pass-4 changed files", dashAllOk);
 
   /* ---------------- summary ---------------- */
   console.log("\n" + passed + " passed, " + failed + " failed.");
